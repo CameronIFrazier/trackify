@@ -27,6 +27,7 @@ export class InfraStack extends cdk.Stack {
     });
 
     const dbCluster = new rds.DatabaseCluster(this, 'TrackifyDb', {
+      enableDataApi: true,
   engine: rds.DatabaseClusterEngine.auroraPostgres({
      version: rds.AuroraPostgresEngineVersion.of('16.8', '16'),
   }),
