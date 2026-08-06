@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import NutrientModal from './NutrientModal';
 import { NutrientValues, SUMMARY_KEYS, ALL_NUTRIENT_KEYS } from './nutrients';
+import { loadFoods, saveFoods } from './foodApi';
 
 // One row = a food with a name, a checked flag, and a full nutrient map.
 type Row = {
@@ -38,12 +39,51 @@ export default function TrackerTable({ initialTitle, onDelete, onTotalsChange }:
   const [rows, setRows] = useState<Row[]>([]);
   const [name, setName] = useState('');
 
+  // Track whether we've done the initial load, so we don't save before loading.
+  const loadedRef = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load saved foods once on mount.
+  useEffect(() => {
+    (async () => {
+      const saved = await loadFoods();
+      if (saved.length > 0) {
+        setRows(saved.map((f) => ({
+          id: f.id,
+          name: f.name,
+          checked: f.checked,
+          nutrients: f.nutrients,
+        })));
+      }
+      loadedRef.current = true;
+    })();
+  }, []);
+
+  // Debounced save whenever rows change (after the initial load).
+  useEffect(() => {
+    if (!loadedRef.current) return; // don't save during/before initial load
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveFoods(rows);
+    }, 800); // wait 800ms after the last change, then save
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [rows]);
+
   // Which row's nutrient modal is open (null = none).
   const [modalRowId, setModalRowId] = useState<number | null>(null);
 
   const toggleChecked = (id: number) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, checked: !r.checked } : r)));
   };
+
+  // Uncheck every row (e.g. to reset the day's counted foods).
+  const uncheckAll = () => {
+    setRows((prev) => prev.map((r) => ({ ...r, checked: false })));
+  };
+
+  const anyChecked = rows.some((r) => r.checked);
 
   const addRow = () => {
     if (!name.trim()) return;
@@ -124,6 +164,11 @@ export default function TrackerTable({ initialTitle, onDelete, onTotalsChange }:
         ) : (
           <TouchableOpacity onPress={() => setEditingTitle(true)} style={{ flex: 1 }}>
             <Text style={styles.title}>{title} ✎</Text>
+          </TouchableOpacity>
+        )}
+        {anyChecked && (
+          <TouchableOpacity onPress={uncheckAll} style={styles.uncheckAllBtn}>
+            <Text style={styles.uncheckAllText}>Uncheck All</Text>
           </TouchableOpacity>
         )}
         {onDelete && (
@@ -249,6 +294,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#2e7d32',
     paddingVertical: 2,
   },
+  uncheckAllBtn: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  uncheckAllText: { color: '#555', fontSize: 12, fontWeight: '600' },
   deleteTableBtn: { padding: 6, marginLeft: 8 },
   deleteTableText: { color: '#c62828', fontSize: 18, fontWeight: 'bold' },
 

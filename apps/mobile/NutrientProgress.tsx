@@ -1,8 +1,10 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { PROGRESS_ORDER, DAILY_VALUES, nutrientMeta, NutrientValues } from './nutrients';
 
 type NutrientProgressProps = {
-  totals: NutrientValues; // today's accumulated nutrients (from checked foods)
+  totals: NutrientValues;               // today's accumulated nutrients
+  goals?: Record<string, number>;       // personalized goals (falls back to DVs)
+  onEditGoals?: () => void;             // open the goal-editing screen
 };
 
 // Color shifts as a nutrient approaches/exceeds its goal.
@@ -13,12 +15,19 @@ function barColor(pct: number): string {
   return '#ef9a9a';                    // low — soft red
 }
 
-export default function NutrientProgress({ totals }: NutrientProgressProps) {
+export default function NutrientProgress({ totals, goals, onEditGoals }: NutrientProgressProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Today's Nutrients</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.heading}>Today's Nutrients</Text>
+        {onEditGoals && (
+          <TouchableOpacity style={styles.editButton} onPress={onEditGoals}>
+            <Text style={styles.editText}>Edit Goals</Text>
+          </TouchableOpacity>
+        )}
+      </View>
       {PROGRESS_ORDER.map((key) => {
-        const goal = DAILY_VALUES[key] ?? 0;
+        const goal = (goals ?? DAILY_VALUES)[key] ?? 0;
         const current = totals[key] ?? 0;
         const pct = goal > 0 ? Math.min(current / goal, 1) : 0;
         const rawPct = goal > 0 ? current / goal : 0; // uncapped, for the % label
@@ -59,7 +68,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  heading: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, color: '#222' },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  heading: { fontSize: 18, fontWeight: 'bold', color: '#222' },
+  editButton: {
+    backgroundColor: '#eef2ff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  editText: { color: '#4338ca', fontSize: 13, fontWeight: '600' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
