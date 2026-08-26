@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { NUTRIENT_GROUPS, NutrientValues } from './nutrients';
+import { estimateNutrients } from './nutrientEstimateApi';
 
 type NutrientModalProps = {
   visible: boolean;
@@ -29,6 +30,9 @@ export default function NutrientModal({
   const [values, setValues] = useState<NutrientValues>(initialValues);
   // Track which fields were filled by "assume" so we can show them differently.
   const [estimated, setEstimated] = useState<Record<string, boolean>>({});
+  // Loading + error state for the AI estimate call.
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState('');
 
   const setValue = (key: string, text: string) => {
     setValues((prev) => ({
@@ -39,24 +43,46 @@ export default function NutrientModal({
     setEstimated((prev) => ({ ...prev, [key]: false }));
   };
 
-  // STUB for now: fills every empty field with a placeholder estimate (0),
-  // and marks it as estimated. Later this calls an AI to make real guesses
-  // from foodName + the values already entered.
-  const assumeUnfilled = () => {
-    setValues((prev) => {
-      const next = { ...prev };
-      const newlyEstimated: Record<string, boolean> = { ...estimated };
-      NUTRIENT_GROUPS.forEach((g) =>
-        g.items.forEach((item) => {
-          if (next[item.key] === undefined) {
-            next[item.key] = 0; // placeholder — AI will replace this
-            newlyEstimated[item.key] = true;
-          }
-        })
+  // Clear every nutrient field back to empty and drop the estimated markers.
+  const emptyAllFields = () => {
+    setValues({});
+    setEstimated({});
+    setEstimateError('');
+  };
+
+  // Ask Bedrock (via the Lambda estimate route) to fill in every unfilled
+  // nutrient, based on the food name and the values already entered.
+  // Only blank fields are filled; anything the user typed is preserved.
+  const assumeUnfilled = async () => {
+    setEstimateError('');
+    setEstimating(true);
+    try {
+      const schema = NUTRIENT_GROUPS.flatMap((g) =>
+        g.items.map((i) => ({ key: i.key, label: i.label, unit: i.unit }))
       );
-      setEstimated(newlyEstimated);
-      return next;
-    });
+      const result = await estimateNutrients(foodName, values, schema);
+      if (!result) {
+        setEstimateError('Could not estimate right now — please try again.');
+        return;
+      }
+      setValues((prev) => {
+        const next = { ...prev };
+        const newlyEstimated: Record<string, boolean> = { ...estimated };
+        for (const [key, val] of Object.entries(result)) {
+          if (next[key] === undefined) {
+            // only fill blanks — never overwrite a value the user entered
+            next[key] = val;
+            newlyEstimated[key] = true;
+          }
+        }
+        setEstimated(newlyEstimated);
+        return next;
+      });
+    } catch (e) {
+      setEstimateError('Something went wrong estimating — please try again.');
+    } finally {
+      setEstimating(false);
+    }
   };
 
   const handleSave = () => {
@@ -107,12 +133,29 @@ export default function NutrientModal({
           ))}
 
           {/* Assume unfilled button */}
-          <TouchableOpacity style={styles.assumeButton} onPress={assumeUnfilled}>
-            <Text style={styles.assumeText}>✨ Assume Unfilled</Text>
+          <TouchableOpacity
+            style={[styles.assumeButton, estimating && { opacity: 0.6 }]}
+            onPress={assumeUnfilled}
+            disabled={estimating}
+          >
+            <Text style={styles.assumeText}>
+              {estimating ? 'Estimating…' : '✨ Assume Unfilled'}
+            </Text>
           </TouchableOpacity>
+          {estimateError ? <Text style={styles.assumeError}>{estimateError}</Text> : null}
+
+          {/* Empty all fields button */}
+          <TouchableOpacity
+            style={styles.emptyButton}
+            onPress={emptyAllFields}
+            disabled={estimating}
+          >
+            <Text style={styles.emptyText}>Empty All Fields</Text>
+          </TouchableOpacity>
+
           <Text style={styles.assumeHint}>
-            Fills empty fields with estimates (AI-powered later). Estimated fields
-            appear highlighted — edit any to override.
+            Uses AI to estimate empty fields from the food name and the values you've
+            entered. Estimated fields appear highlighted — edit any to override.
           </Text>
         </ScrollView>
       </View>
@@ -152,9 +195,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
+    minWidth: 0,
   },
-  fieldLabel: { fontSize: 15, color: '#333', flex: 1 },
-  inputWrap: { flexDirection: 'row', alignItems: 'center', width: 130 },
+  fieldLabel: { fontSize: 15, color: '#333', flex: 1, minWidth: 0, paddingRight: 8 },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', flexBasis: 130, flexShrink: 1, minWidth: 90 },
   input: {
     borderWidth: 1,
     borderColor: '#ccc',
@@ -163,6 +207,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 15,
     flex: 1,
+    minWidth: 0,
     textAlign: 'right',
   },
   inputEstimated: { backgroundColor: '#fff8e1', borderColor: '#ffb300' },
@@ -176,5 +221,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   assumeText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  assumeError: { color: '#c62828', fontSize: 13, marginTop: 10, textAlign: 'center' },
+  emptyButton: {
+    borderWidth: 1,
+    borderColor: '#c62828',
+    borderRadius: 10,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 10,
+    backgroundColor: '#fff',
+  },
+  emptyText: { color: '#c62828', fontSize: 15, fontWeight: '600' },
   assumeHint: { color: '#888', fontSize: 12, marginTop: 8, textAlign: 'center', lineHeight: 17 },
 });

@@ -6,24 +6,28 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  Image,
   StyleSheet,
 } from 'react-native';
 import TrackerTable from './TrackerTable';
 import NutrientProgress from './NutrientProgress';
 import Onboarding from './Onboarding';
+import LoadingScreen from './LoadingScreen';
 import GoalsModal from './GoalsModal';
 import SignIn from './SignIn';
 import VerifyEmail from './VerifyEmail';
 import { NutrientValues } from './nutrients';
-import { UserProfile, computeGoals } from './goals';
+import { UserProfile, computeGoals, computeComparators } from './goals';
+import { Comparator } from './goalComparators';
 import { loadGoals, saveGoals } from './nutrientGoalsApi';
-import { getSignedInUser, loginUser, logoutUser } from './auth';
+import { getSignedInUser, loginUser, logoutUser, getUserId } from './auth';
+import { loadProfile, saveProfile } from './profileApi';
 
 // ---- DEV MODE ----
 // Set to true to skip auth entirely and boot straight into the app with a
 // hardcoded profile. Flip to false to restore the real Cognito login flow
 // (which needs a development build to work — Expo Go can't run Amplify auth).
-const DEV_MODE = true;
+const DEV_MODE = false;
 const DEV_PROFILE: UserProfile = {
   name: 'Cameron',
   email: 'cameronifrazier1@gmail.com',
@@ -43,8 +47,13 @@ export default function App() {
   const [goals, setGoals] = useState<Record<string, number>>(
     DEV_MODE ? computeGoals(DEV_PROFILE) : {}
   );
+  const [comparators, setComparators] = useState<Record<string, Comparator>>(
+    DEV_MODE ? computeComparators() : {}
+  );
   const [totals, setTotals] = useState<NutrientValues>({});
   const [goalsModalOpen, setGoalsModalOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState('Loading…');
 
   // Holds signup details between signup → verify → auto sign-in.
   const pendingAuth = useRef<{ email: string; password: string; profile: UserProfile } | null>(null);
@@ -52,26 +61,61 @@ export default function App() {
   const scrollRef = useRef<ScrollView>(null);
   const infographicY = useRef(0);
 
-  // On launch, check if someone is already signed in.
+  // On launch, check if someone is already signed in (persisted session).
+  // If so, skip the sign-in screen and load their profile directly.
   useEffect(() => {
     if (DEV_MODE) return; // skip auth entirely in dev mode
     (async () => {
       const user = await getSignedInUser();
-      setScreen('signIn');
+      if (user) {
+        // Already signed in from a previous session — go straight to loading.
+        await enterAppForSignedInUser();
+      } else {
+        setScreen('signIn');
+      }
     })();
   }, []);
 
+  // Shared logic: for an already-authenticated user, load profile and route.
+  const enterAppForSignedInUser = async () => {
+    setLoadingMessage('Loading your data…');
+    setScreen('loading');
+    const uid = await getUserId();
+    if (!uid) {
+      setScreen('signIn');
+      return;
+    }
+    setUserId(uid);
+    const saved = await loadProfile(uid);
+    if (saved) {
+      setProfile(saved);
+      setGoals(computeGoals(saved));
+      setComparators(computeComparators());
+      setScreen('app');
+    } else {
+      setScreen('signUp'); // authed but no profile yet -> onboarding
+    }
+  };
+
   // When we enter the app with a profile, load any saved goals from the DB
-  // and merge them over the computed defaults (saved values win).
+  // and merge them over the computed defaults (saved values win). Retries
+  // internally to cover Aurora's cold-start wake.
   useEffect(() => {
     if (screen !== 'app' || !profile) return;
     (async () => {
-      const saved = await loadGoals();
-      if (Object.keys(saved).length > 0) {
-        setGoals((prev) => ({ ...prev, ...saved }));
+      if (!userId) return;
+      const saved = await loadGoals(userId);
+      // null = load failed after retries; only merge on a real result.
+      if (saved) {
+        if (Object.keys(saved.goals).length > 0) {
+          setGoals((prev) => ({ ...prev, ...saved.goals }));
+        }
+        if (Object.keys(saved.comparators).length > 0) {
+          setComparators((prev) => ({ ...prev, ...saved.comparators }));
+        }
       }
     })();
-  }, [screen, profile]);
+  }, [screen, profile, userId]);
 
   // After Cognito signup succeeds → go to email verification.
   const handleSignUp = (p: UserProfile, email: string, password: string) => {
@@ -83,34 +127,46 @@ export default function App() {
   const handleVerified = async () => {
     const pending = pendingAuth.current;
     if (!pending) return;
+    setLoadingMessage('Creating your account…');
+    setScreen('loading');
     try {
       await loginUser(pending.email, pending.password);
     } catch {
-      // If auto-login fails, fall back to the sign-in screen.
       setScreen('signIn');
       return;
     }
+    // Now signed in — get the real Cognito user id and save the new profile.
+    const uid = await getUserId();
+    if (uid) {
+      setUserId(uid);
+      await saveProfile(uid, pending.profile); // persist onboarding data
+    }
     setProfile(pending.profile);
     setGoals(computeGoals(pending.profile));
+    setComparators(computeComparators());
     pendingAuth.current = null;
     setScreen('app');
   };
 
-  // Returning user signs in. We don't have their profile saved yet (next
-  // milestone), so send them to onboarding to re-enter it, already authed.
-  const handleSignedIn = () => {
-    setScreen('signUp');
+  // Returning user signs in -> load profile and route (reuses shared logic).
+  const handleSignedIn = async () => {
+    await enterAppForSignedInUser();
   };
 
   const resetGoalsToComputed = () => {
-    if (profile) setGoals(computeGoals(profile));
+    if (profile) {
+      setGoals(computeGoals(profile));
+      setComparators(computeComparators());
+    }
   };
 
   const handleLogout = async () => {
     await logoutUser();
     setProfile(null);
     setGoals({});
+    setComparators({});
     setTotals({});
+    setUserId(null);
     pendingAuth.current = null;
     setScreen('signIn');
   };
@@ -122,11 +178,7 @@ export default function App() {
   // ---- Screen routing ----
 
   if (screen === 'loading') {
-    return (
-      <SafeAreaView style={styles.centered}>
-        <Text style={styles.loadingText}>Loading…</Text>
-      </SafeAreaView>
-    );
+    return <LoadingScreen message={loadingMessage} />;
   }
 
   if (screen === 'signIn') {
@@ -136,7 +188,7 @@ export default function App() {
   }
 
   if (screen === 'signUp') {
-    return <Onboarding onComplete={handleSignUp} />;
+    return <Onboarding onComplete={handleSignUp} onBack={() => setScreen('signIn')} />;
   }
 
   if (screen === 'verify' && pendingAuth.current) {
@@ -149,7 +201,11 @@ export default function App() {
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
         <View style={styles.topBar}>
           <View>
-            <Text style={styles.appTitle}>Trackify</Text>
+            <Image
+              source={require('./assets/wordmark.png')}
+              style={styles.wordmark}
+              resizeMode="contain"
+            />
             {profile && <Text style={styles.greeting}>Hi {profile.name} 👋</Text>}
           </View>
           <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
@@ -161,7 +217,7 @@ export default function App() {
           <Text style={styles.jumpButtonText}>↓ Jump to Nutrients</Text>
         </TouchableOpacity>
 
-        <TrackerTable initialTitle="Food" onTotalsChange={setTotals} />
+        <TrackerTable initialTitle="Food" onTotalsChange={setTotals} userId={userId} />
 
         <View
           onLayout={(e) => {
@@ -171,6 +227,7 @@ export default function App() {
           <NutrientProgress
             totals={totals}
             goals={goals}
+            comparators={comparators}
             onEditGoals={() => setGoalsModalOpen(true)}
           />
 
@@ -183,10 +240,12 @@ export default function App() {
       <GoalsModal
         visible={goalsModalOpen}
         goals={goals}
+        comparators={comparators}
         onClose={() => setGoalsModalOpen(false)}
-        onSave={(newGoals) => {
-          setGoals(newGoals);        // update UI immediately
-          saveGoals(newGoals);       // persist to the database
+        onSave={(newGoals, newComparators) => {
+          setGoals(newGoals);              // update UI immediately
+          setComparators(newComparators);
+          if (userId) saveGoals(userId, newGoals, newComparators); // persist
         }}
         onResetToComputed={resetGoalsToComputed}
       />
@@ -202,6 +261,7 @@ const styles = StyleSheet.create({
 
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 8, marginBottom: 16 },
   appTitle: { fontSize: 28, fontWeight: 'bold', color: '#1a1a1a' },
+  wordmark: { width: 150, height: 40 },
   greeting: { fontSize: 15, color: '#666', marginTop: 2 },
   logoutBtn: {
     backgroundColor: '#f5f5f5',

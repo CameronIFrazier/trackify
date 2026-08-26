@@ -2,7 +2,8 @@
 // Uses the Mifflin-St Jeor equation for calories and RDA tables for the rest —
 // established nutrition science, no AI needed.
 
-import { DAILY_VALUES } from './nutrients';
+import { DAILY_VALUES, ALL_NUTRIENT_KEYS } from './nutrients';
+import { Comparator, defaultComparator } from './goalComparators';
 
 export type Sex = 'male' | 'female';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'veryActive';
@@ -101,4 +102,15 @@ export function computeGoals(p: UserProfile): Record<string, number> {
   goals.totalSugars = goals.addedSugars * 2; // rough total-sugar allowance
 
   return goals;
+}
+
+// Default comparator for every nutrient: >= for "get enough" nutrients
+// (protein, fiber, vitamins, minerals), <= for "stay under" ones
+// (calories, sugar, fat, sodium, cholesterol, etc.).
+export function computeComparators(): Record<string, Comparator> {
+  const out: Record<string, Comparator> = {};
+  ALL_NUTRIENT_KEYS.forEach((key) => {
+    out[key] = defaultComparator(key);
+  });
+  return out;
 }

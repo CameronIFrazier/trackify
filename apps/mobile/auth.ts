@@ -30,8 +30,14 @@ export async function resendCode(email: string) {
   return resendSignUpCode({ username: email });
 }
 
-// Sign in an existing, verified user.
+// Sign in an existing, verified user. Signs out any lingering session first
+// so we never hit the "already a signed in user" error.
 export async function loginUser(email: string, password: string) {
+  try {
+    await signOut();
+  } catch {
+    // no existing session — fine
+  }
   return signIn({ username: email, password });
 }
 
@@ -46,5 +52,16 @@ export async function getSignedInUser() {
     return await getCurrentUser();
   } catch {
     return null; // not signed in
+  }
+}
+
+// Get the signed-in user's unique Cognito ID (the stable identifier for
+// keying their data). Returns null if not signed in.
+export async function getUserId(): Promise<string | null> {
+  try {
+    const user = await getCurrentUser();
+    return user.userId; // Cognito's stable unique id for this user
+  } catch {
+    return null;
   }
 }

@@ -1,21 +1,26 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { PROGRESS_ORDER, DAILY_VALUES, nutrientMeta, NutrientValues } from './nutrients';
+import {
+  Comparator,
+  defaultComparator,
+  goalColor,
+  goalFillFraction,
+  COMPARATOR_SYMBOLS,
+} from './goalComparators';
 
 type NutrientProgressProps = {
-  totals: NutrientValues;               // today's accumulated nutrients
-  goals?: Record<string, number>;       // personalized goals (falls back to DVs)
-  onEditGoals?: () => void;             // open the goal-editing screen
+  totals: NutrientValues;                       // today's accumulated nutrients
+  goals?: Record<string, number>;               // personalized goal amounts (falls back to DVs)
+  comparators?: Record<string, Comparator>;     // per-nutrient direction (falls back to defaults)
+  onEditGoals?: () => void;                     // open the goal-editing screen
 };
 
-// Color shifts as a nutrient approaches/exceeds its goal.
-function barColor(pct: number): string {
-  if (pct >= 1) return '#2e7d32';      // met goal — green
-  if (pct >= 0.6) return '#66bb6a';    // getting there — light green
-  if (pct >= 0.3) return '#ffa726';    // partial — amber
-  return '#ef9a9a';                    // low — soft red
-}
-
-export default function NutrientProgress({ totals, goals, onEditGoals }: NutrientProgressProps) {
+export default function NutrientProgress({
+  totals,
+  goals,
+  comparators,
+  onEditGoals,
+}: NutrientProgressProps) {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
@@ -26,12 +31,18 @@ export default function NutrientProgress({ totals, goals, onEditGoals }: Nutrien
           </TouchableOpacity>
         )}
       </View>
+
       {PROGRESS_ORDER.map((key) => {
         const goal = (goals ?? DAILY_VALUES)[key] ?? 0;
         const current = totals[key] ?? 0;
-        const pct = goal > 0 ? Math.min(current / goal, 1) : 0;
-        const rawPct = goal > 0 ? current / goal : 0; // uncapped, for the % label
+        const comparator: Comparator = comparators?.[key] ?? defaultComparator(key);
+
+        const ratio = goal > 0 ? current / goal : 0;
+        const fill = goalFillFraction(ratio);
+        const color = goalColor(ratio, comparator);
         const meta = nutrientMeta(key);
+        const sym = COMPARATOR_SYMBOLS[comparator];
+
         return (
           <View key={key} style={styles.row}>
             <Text style={styles.label} numberOfLines={1}>
@@ -39,15 +50,15 @@ export default function NutrientProgress({ totals, goals, onEditGoals }: Nutrien
             </Text>
             <View style={styles.barTrack}>
               <View
-                style={[
-                  styles.barFill,
-                  { width: `${pct * 100}%`, backgroundColor: barColor(rawPct) },
-                ]}
+                style={[styles.barFill, { width: `${fill * 100}%`, backgroundColor: color }]}
               />
             </View>
-            <Text style={styles.value}>
-              {current}/{goal}
-              {meta.unit === 'kcal' ? '' : meta.unit}
+            <Text style={styles.value} numberOfLines={1}>
+              {current}
+              <Text style={styles.goalPart}>
+                {' '}{sym}{goal}
+                {meta.unit === 'kcal' ? '' : meta.unit}
+              </Text>
             </Text>
           </View>
         );
@@ -87,7 +98,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6, // tight spacing — packed without cramming
+    marginBottom: 6,
+    minWidth: 0,
   },
   label: { width: 96, fontSize: 12, color: '#444' },
   barTrack: {
@@ -97,7 +109,9 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     overflow: 'hidden',
     marginHorizontal: 8,
+    minWidth: 0,
   },
   barFill: { height: '100%', borderRadius: 5 },
-  value: { width: 64, fontSize: 10, color: '#888', textAlign: 'right' },
+  value: { width: 90, fontSize: 10, color: '#888', textAlign: 'right' },
+  goalPart: { color: '#aaa' },
 });
