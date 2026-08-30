@@ -19,13 +19,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Load the user's saved food list, retrying to cover Aurora's cold-start wake.
 // Returns null if every attempt failed (so callers can tell "no data" apart
 // from "couldn't reach the DB yet").
-export async function loadFoods(userId: string): Promise<FoodRow[] | null> {
+export async function loadFoods(userId: string, tableId: string): Promise<FoodRow[] | null> {
   const delays = [0, 3000, 5000, 8000]; // wait longer between each retry
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (delays[attempt] > 0) await sleep(delays[attempt]);
     try {
       const res = await fetch(
-        `${FOOD_URL}?userId=${encodeURIComponent(userId)}&type=food`,
+        `${FOOD_URL}?userId=${encodeURIComponent(userId)}&type=food&tableId=${encodeURIComponent(tableId)}`,
         { method: 'GET' }
       );
       if (res.ok) {
@@ -49,7 +49,7 @@ export async function loadFoods(userId: string): Promise<FoodRow[] | null> {
 }
 
 // Save (sync) the whole food list, with a couple of retries.
-export async function saveFoods(userId: string, foods: FoodRow[]): Promise<boolean> {
+export async function saveFoods(userId: string, tableId: string, foods: FoodRow[]): Promise<boolean> {
   const delays = [0, 3000, 5000];
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (delays[attempt] > 0) await sleep(delays[attempt]);
@@ -57,7 +57,7 @@ export async function saveFoods(userId: string, foods: FoodRow[]): Promise<boole
       const res = await fetch(FOOD_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, foods }),
+        body: JSON.stringify({ userId, tableId, foods }),
       });
       if (res.ok) return true;
       console.log(`saveFoods attempt ${attempt + 1}: status ${res.status}`);

@@ -52,28 +52,39 @@ function qtyToNumber(s: string): number {
 }
 
 type TrackerTableProps = {
+  tableId: string;                                  // which table this instance owns
   initialTitle: string;
-  onDelete?: () => void;
+  onDelete?: () => void;                            // delete this whole table (undefined = can't delete)
+  onRename?: (name: string) => void;                // persist a table rename
   onTotalsChange?: (totals: NutrientValues) => void;
   userId?: string | null;
+  clearChecksSignal?: number; // bump to uncheck all items (new-day plate clear)
+  onLoaded?: () => void;      // fired once foods have finished loading from the DB
 };
 
-export default function TrackerTable({ initialTitle, onDelete, onTotalsChange, userId }: TrackerTableProps) {
+export default function TrackerTable({ tableId, initialTitle, onDelete, onRename, onTotalsChange, userId, clearChecksSignal, onLoaded }: TrackerTableProps) {
   const [title, setTitle] = useState(initialTitle);
   const [editingTitle, setEditingTitle] = useState(false);
   const [rows, setRows] = useState<Row[]>([]);
   const [name, setName] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
 
+  // Keep the title in sync if the active table changes under us.
+  useEffect(() => {
+    setTitle(initialTitle);
+  }, [initialTitle, tableId]);
+
   // Track whether we've done the initial load, so we don't save before loading.
   const loadedRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load saved foods when we have a user id (with retry for Aurora cold-start).
+  // Load saved foods for THIS table (with retry for Aurora cold-start).
+  // Re-runs when the active table changes, so cycling loads the right foods.
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !tableId) return;
+    loadedRef.current = false; // reset guard for the new table
     (async () => {
-      const saved = await loadFoods(userId);
+      const saved = await loadFoods(userId, tableId);
       // null = every attempt failed (don't treat as "no data"); array = success.
       if (saved !== null) {
         setRows(
@@ -87,21 +98,24 @@ export default function TrackerTable({ initialTitle, onDelete, onTotalsChange, u
           }))
         );
         loadedRef.current = true; // only allow saving once we've truly loaded
+        onLoaded?.();             // signal parent that foods are loaded
       }
       // if null, leave loadedRef false so we don't overwrite the DB with an
       // empty table, and the user can reload to retry.
     })();
-  }, [userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, tableId]);
 
   // Debounced save whenever rows change (after the initial load).
   useEffect(() => {
     if (!loadedRef.current) return; // don't save during/before initial load
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      if (userId) {
+      if (userId && tableId) {
         // Convert the raw quantity text to a number for storage.
         saveFoods(
           userId,
+          tableId,
           rows.map((r) => ({
             id: r.id,
             name: r.name,
@@ -206,6 +220,17 @@ export default function TrackerTable({ initialTitle, onDelete, onTotalsChange, u
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows]);
 
+  // New-day plate clear: when the signal bumps, uncheck every item (items stay
+  // in the table, just unchecked). Skip the initial mount (signal 0 / undefined).
+  const clearSignalRef = useRef<number | undefined>(clearChecksSignal);
+  useEffect(() => {
+    if (clearChecksSignal === undefined) return;
+    if (clearSignalRef.current === clearChecksSignal) return;
+    clearSignalRef.current = clearChecksSignal;
+    if (!loadedRef.current) return; // don't fire before foods have loaded
+    setRows((prev) => prev.map((r) => ({ ...r, checked: false })));
+  }, [clearChecksSignal]);
+
   const modalRow = rows.find((r) => r.id === modalRowId) ?? null;
 
   return (
@@ -217,10 +242,10 @@ export default function TrackerTable({ initialTitle, onDelete, onTotalsChange, u
             style={styles.titleInput}
             value={title}
             onChangeText={setTitle}
-            onBlur={() => setEditingTitle(false)}
+            onBlur={() => { setEditingTitle(false); onRename?.(title.trim() || 'Food'); }}
             autoFocus
             returnKeyType="done"
-            onSubmitEditing={() => setEditingTitle(false)}
+            onSubmitEditing={() => { setEditingTitle(false); onRename?.(title.trim() || 'Food'); }}
           />
         ) : (
           <TouchableOpacity onPress={() => setEditingTitle(true)} style={{ flex: 1 }}>

@@ -8,7 +8,7 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { UserProfile, Sex, ActivityLevel } from './goals';
+import { UserProfile, Sex, ActivityLevel, detectTimezone } from './goals';
 import { registerUser } from './auth';
 
 type OnboardingProps = {
@@ -127,6 +127,7 @@ export default function Onboarding({ onComplete, onBack }: OnboardingProps) {
       heightCm: finalHeightCm,
       weightKg: finalWeightKg,
       activity: activity ?? 'moderate', // default if skipped
+      timezone: detectTimezone(),       // capture device timezone at signup
     };
 
     // Register with Cognito. This emails a verification code.

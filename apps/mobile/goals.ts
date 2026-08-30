@@ -5,6 +5,16 @@
 import { DAILY_VALUES, ALL_NUTRIENT_KEYS } from './nutrients';
 import { Comparator, defaultComparator } from './goalComparators';
 
+// Detect the device's IANA timezone (e.g. "America/Los_Angeles").
+// Free, synchronous, local read — no network. Falls back to UTC.
+export function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
 export type Sex = 'male' | 'female';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'veryActive';
 
@@ -16,6 +26,8 @@ export type UserProfile = {
   heightCm: number;
   weightKg?: number;          // optional
   activity: ActivityLevel;    // defaults to 'moderate' if skipped
+  timezone?: string;          // IANA tz, e.g. 'America/Los_Angeles'
+  lastLoggedDate?: string;    // last completed day logged to the Food Log ('YYYY-MM-DD')
 };
 
 // Activity multipliers applied to BMR (standard TDEE factors).

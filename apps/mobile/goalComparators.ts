@@ -99,3 +99,17 @@ export function goalFillFraction(ratio: number): number {
   if (!isFinite(ratio) || ratio < 0) return 0;
   return Math.min(ratio, 1);
 }
+
+// The main nutrients used to score "how a day went" on the Food Log calendar.
+export const MAIN_GOAL_KEYS = ['calories', 'protein', 'totalSugars', 'totalCarbs', 'totalFat', 'fiber'];
+
+// Whether a single nutrient met its goal, given its comparator.
+// "At least" (>=,>): met when ratio >= 1. "At most" (<=,<): met when ratio <= 1.
+// "Exactly" (=): met within the small blue window (100%-103%).
+export function goalMet(current: number, goal: number, comparator: Comparator): boolean {
+  if (!goal || goal <= 0) return false;
+  const ratio = current / goal;
+  if (isAtLeast(comparator)) return ratio >= 1;
+  if (isAtMost(comparator)) return ratio <= 1;
+  return ratio >= 1 && ratio <= 1.03; // eq
+}

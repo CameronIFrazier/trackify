@@ -9,19 +9,21 @@ import {
   Image,
   StyleSheet,
 } from 'react-native';
-import TrackerTable from './TrackerTable';
+import TablesManager from './TablesManager';
 import NutrientProgress from './NutrientProgress';
 import Onboarding from './Onboarding';
 import LoadingScreen from './LoadingScreen';
 import GoalsModal from './GoalsModal';
+import FoodLog from './FoodLog';
 import SignIn from './SignIn';
 import VerifyEmail from './VerifyEmail';
 import { NutrientValues } from './nutrients';
-import { UserProfile, computeGoals, computeComparators } from './goals';
+import { UserProfile, computeGoals, computeComparators, detectTimezone } from './goals';
 import { Comparator } from './goalComparators';
 import { loadGoals, saveGoals } from './nutrientGoalsApi';
 import { getSignedInUser, loginUser, logoutUser, getUserId } from './auth';
 import { loadProfile, saveProfile } from './profileApi';
+import { runDailySnapshot } from './dailyLog';
 
 // ---- DEV MODE ----
 // Set to true to skip auth entirely and boot straight into the app with a
@@ -39,7 +41,7 @@ const DEV_PROFILE: UserProfile = {
 };
 
 // Which screen the user is on.
-type Screen = 'loading' | 'signIn' | 'signUp' | 'verify' | 'app';
+type Screen = 'loading' | 'signIn' | 'signUp' | 'verify' | 'app' | 'foodLog';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(DEV_MODE ? 'app' : 'loading');
@@ -51,6 +53,19 @@ export default function App() {
     DEV_MODE ? computeComparators() : {}
   );
   const [totals, setTotals] = useState<NutrientValues>({});
+  // Ref mirror of totals so the snapshot always reads the freshest value,
+  // avoiding a one-render lag between foodsLoaded flipping and totals committing.
+  const totalsRef = useRef<NutrientValues>({});
+  const handleTotalsChange = (t: NutrientValues) => {
+    totalsRef.current = t;
+    setTotals(t);
+  };
+  // Bumped to signal TrackerTable to uncheck everything (new-day plate clear).
+  const [clearChecksSignal, setClearChecksSignal] = useState(0);
+  // Flips true once TrackerTable has loaded foods from the DB (so totals are real).
+  const [foodsLoaded, setFoodsLoaded] = useState(false);
+  // Guards so the daily snapshot runs at most once per app entry.
+  const snapshotRanRef = useRef(false);
   const [goalsModalOpen, setGoalsModalOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('Loading…');
@@ -88,8 +103,15 @@ export default function App() {
     setUserId(uid);
     const saved = await loadProfile(uid);
     if (saved) {
-      setProfile(saved);
-      setGoals(computeGoals(saved));
+      // Re-check timezone on every open — if the user has traveled, update it.
+      const currentTz = detectTimezone();
+      let profileToUse = saved;
+      if (saved.timezone !== currentTz) {
+        profileToUse = { ...saved, timezone: currentTz };
+        saveProfile(uid, profileToUse); // persist the change (fire-and-forget)
+      }
+      setProfile(profileToUse);
+      setGoals(computeGoals(profileToUse));
       setComparators(computeComparators());
       setScreen('app');
     } else {
@@ -117,7 +139,38 @@ export default function App() {
     })();
   }, [screen, profile, userId]);
 
-  // After Cognito signup succeeds → go to email verification.
+  // Daily-log snapshot on app entry. Runs once foods have loaded (so `totals`
+  // reflects yesterday's checked plate, not an empty pre-load state). If the day
+  // rolled over since the last logged day, snapshot the completed day(s) and
+  // clear the plate's checks.
+  useEffect(() => {
+    if (screen !== 'app' || !profile || !userId) return;
+    if (!foodsLoaded) return;          // wait until the table has loaded foods
+    if (snapshotRanRef.current) return;
+    snapshotRanRef.current = true;
+
+    (async () => {
+      // Let the totals from the just-loaded foods settle for a tick.
+      await new Promise((r) => setTimeout(r, 400));
+      const tz = profile.timezone ?? detectTimezone();
+      const result = await runDailySnapshot(userId, {
+        timezone: tz,
+        lastLoggedDate: profile.lastLoggedDate,
+        checkedTotals: totalsRef.current,   // freshest checked totals (via ref)
+        goals,
+        comparators,
+      });
+
+      // Update the in-memory marker so we don't re-log this session.
+      setProfile((prev) => (prev ? { ...prev, lastLoggedDate: result.newLastLogged } : prev));
+
+      // A rollover means a new day began → clear the checks on the plate.
+      if (result.rolledOver) {
+        setClearChecksSignal((n) => n + 1);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, profile, userId, foodsLoaded]);
   const handleSignUp = (p: UserProfile, email: string, password: string) => {
     pendingAuth.current = { email, password, profile: p };
     setScreen('verify');
@@ -166,6 +219,8 @@ export default function App() {
     setGoals({});
     setComparators({});
     setTotals({});
+    setFoodsLoaded(false);
+    snapshotRanRef.current = false;
     setUserId(null);
     pendingAuth.current = null;
     setScreen('signIn');
@@ -195,6 +250,10 @@ export default function App() {
     return <VerifyEmail email={pendingAuth.current.email} onVerified={handleVerified} />;
   }
 
+  if (screen === 'foodLog') {
+    return <FoodLog userId={userId} onBack={() => setScreen('app')} />;
+  }
+
   // Main app (screen === 'app')
   return (
     <SafeAreaView style={styles.container}>
@@ -208,16 +267,26 @@ export default function App() {
             />
             {profile && <Text style={styles.greeting}>Hi {profile.name} 👋</Text>}
           </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
+          <View style={styles.topBarButtons}>
+            <TouchableOpacity onPress={() => setScreen('foodLog')} style={styles.foodLogBtn}>
+              <Text style={styles.foodLogText}>📅 Food Log</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity style={styles.jumpButton} onPress={scrollToInfographic}>
           <Text style={styles.jumpButtonText}>↓ Jump to Nutrients</Text>
         </TouchableOpacity>
 
-        <TrackerTable initialTitle="Food" onTotalsChange={setTotals} userId={userId} />
+        <TablesManager
+          userId={userId}
+          onTotalsChange={handleTotalsChange}
+          clearChecksSignal={clearChecksSignal}
+          onLoaded={() => setFoodsLoaded(true)}
+        />
 
         <View
           onLayout={(e) => {
@@ -272,6 +341,16 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
   },
   logoutText: { color: '#555', fontSize: 13, fontWeight: '600' },
+  topBarButtons: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  foodLogBtn: {
+    backgroundColor: '#eef2ff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  foodLogText: { color: '#4338ca', fontSize: 13, fontWeight: '600' },
 
   jumpButton: {
     backgroundColor: '#eef2ff',
