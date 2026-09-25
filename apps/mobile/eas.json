@@ -16,6 +16,11 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "taterfrazier1@gmail.com",
+        "ascAppId": "6808440149"
+      }
+    }
   }
 }

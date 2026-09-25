@@ -68,6 +68,14 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
   const [rows, setRows] = useState<Row[]>([]);
   const [name, setName] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
+  const [page, setPage] = useState(0); // current page (0-based) for row pagination
+
+  const PAGE_SIZE = 10;
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  // Clamp the page if rows shrink (e.g. deletions drop a page).
+  const safePage = Math.min(page, pageCount - 1);
+  const pagedRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const showPager = rows.length > PAGE_SIZE;
 
   // Keep the title in sync if the active table changes under us.
   useEffect(() => {
@@ -156,7 +164,12 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
       quantity: '1',
       nutrients: {},
     };
-    setRows((prev) => [...prev, newRow]);
+    setRows((prev) => {
+      const next = [...prev, newRow];
+      // Jump to the page the new item lands on (the last page).
+      setPage(Math.ceil(next.length / PAGE_SIZE) - 1);
+      return next;
+    });
     setName('');
   };
 
@@ -252,6 +265,25 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
             <Text style={styles.title}>{title} ✎</Text>
           </TouchableOpacity>
         )}
+        {showPager && (
+          <View style={styles.pager}>
+            <TouchableOpacity
+              onPress={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              style={styles.pagerBtn}
+            >
+              <Text style={[styles.pagerArrow, safePage === 0 && styles.pagerArrowDisabled]}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.pagerLabel}>{safePage + 1}/{pageCount}</Text>
+            <TouchableOpacity
+              onPress={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              disabled={safePage >= pageCount - 1}
+              style={styles.pagerBtn}
+            >
+              <Text style={[styles.pagerArrow, safePage >= pageCount - 1 && styles.pagerArrowDisabled]}>›</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {anyChecked && (
           <TouchableOpacity onPress={uncheckAll} style={styles.uncheckAllBtn}>
             <Text style={styles.uncheckAllText}>Uncheck All</Text>
@@ -300,7 +332,7 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
       {rows.length === 0 ? (
         <Text style={styles.emptyText}>No items yet — add one below.</Text>
       ) : (
-        rows.map((row) => (
+        pagedRows.map((row) => (
           <View key={row.id} style={styles.row}>
             <TouchableOpacity
               style={[styles.checkCol, styles.checkBoxWrap]}
@@ -443,6 +475,11 @@ const styles = StyleSheet.create({
   },
   uncheckAllText: { color: '#555', fontSize: 12, fontWeight: '600' },
   deleteTableBtn: { padding: 6, marginLeft: 8 },
+  pager: { flexDirection: 'row', alignItems: 'center', marginLeft: 8 },
+  pagerBtn: { paddingHorizontal: 4 },
+  pagerArrow: { fontSize: 20, color: '#2e7d32', fontWeight: 'bold' },
+  pagerArrowDisabled: { color: '#ccc' },
+  pagerLabel: { fontSize: 12, color: '#666', fontWeight: '600', minWidth: 28, textAlign: 'center' },
   deleteTableText: { color: '#c62828', fontSize: 18, fontWeight: 'bold' },
 
   totalsCard: { backgroundColor: '#2e7d32', borderRadius: 10, padding: 12, marginBottom: 10 },

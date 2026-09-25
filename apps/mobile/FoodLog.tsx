@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import NutrientProgress from './NutrientProgress';
+import NutrientTracker from './NutrientTracker';
 import { loadDailyLog, LoadedDay } from './dailyLogApi';
 import { MAIN_GOAL_KEYS, goalMet, Comparator } from './goalComparators';
 
@@ -342,6 +343,11 @@ export default function FoodLog({ userId, onBack }: FoodLogProps) {
             <LegendDot color={CELL.notLogged} label="Not logged" />
           </View>
         </View>
+
+        {/* Track a nutrient over time */}
+        {!loading && (
+          <NutrientTracker userId={userId} days={days ?? []} />
+        )}
 
         {!loading && (days ?? []).length === 0 && (
           <Text style={styles.emptyMsg}>

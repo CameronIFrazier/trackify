@@ -1,5 +1,8 @@
 import './amplifyConfig'; // must run first to configure Amplify
 import { useState, useRef, useEffect } from 'react';
+import AccountScreen from './AccountScreen';
+import Sources from './Sources';
+
 import {
   SafeAreaView,
   View,
@@ -41,8 +44,7 @@ const DEV_PROFILE: UserProfile = {
 };
 
 // Which screen the user is on.
-type Screen = 'loading' | 'signIn' | 'signUp' | 'verify' | 'app' | 'foodLog';
-
+type Screen = 'loading' | 'signIn' | 'signUp' | 'verify' | 'app' | 'foodLog' | 'account' | 'sources';
 export default function App() {
   const [screen, setScreen] = useState<Screen>(DEV_MODE ? 'app' : 'loading');
   const [profile, setProfile] = useState<UserProfile | null>(DEV_MODE ? DEV_PROFILE : null);
@@ -67,6 +69,7 @@ export default function App() {
   // Guards so the daily snapshot runs at most once per app entry.
   const snapshotRanRef = useRef(false);
   const [goalsModalOpen, setGoalsModalOpen] = useState(false);
+   const [menuOpen, setMenuOpen] = useState(false);   // <-- add this
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('Loading…');
 
@@ -213,8 +216,33 @@ export default function App() {
     }
   };
 
+  // Hide/unhide a nutrient from the Today's Nutrients display (persists on profile).
+  const toggleHiddenNutrient = (key: string) => {
+    if (!profile) return;
+    const current = profile.hiddenNutrients ?? [];
+    const nextHidden = current.includes(key)
+      ? current.filter((k) => k !== key)
+      : [...current, key];
+    const updated = { ...profile, hiddenNutrients: nextHidden };
+    setProfile(updated);
+    if (userId) saveProfile(userId, updated); // persist (fire-and-forget)
+  };
+
   const handleLogout = async () => {
     await logoutUser();
+    setProfile(null);
+    setGoals({});
+    setComparators({});
+    setTotals({});
+    setFoodsLoaded(false);
+    snapshotRanRef.current = false;
+    setUserId(null);
+    pendingAuth.current = null;
+    setScreen('signIn');
+  };
+
+    const handleAccountDeleted = async () => {
+    // Session is already gone (deleteUser revoked it); just clear local state.
     setProfile(null);
     setGoals({});
     setComparators({});
@@ -254,28 +282,71 @@ export default function App() {
     return <FoodLog userId={userId} onBack={() => setScreen('app')} />;
   }
 
+    if (screen === 'account') {
+    return (
+      <AccountScreen
+        profile={profile}
+        userId={userId}
+        onBack={() => setScreen('app')}
+        onAccountDeleted={handleAccountDeleted}
+      />
+    );
+  }
+
+    if (screen === 'sources') {
+    return <Sources onBack={() => setScreen('app')} />;
+  }
+
   // Main app (screen === 'app')
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
         <View style={styles.topBar}>
-          <View>
+          <View style={styles.brandRow}>
             <Image
               source={require('./assets/wordmark.png')}
               style={styles.wordmark}
               resizeMode="contain"
             />
-            {profile && <Text style={styles.greeting}>Hi {profile.name} 👋</Text>}
-          </View>
-          <View style={styles.topBarButtons}>
-            <TouchableOpacity onPress={() => setScreen('foodLog')} style={styles.foodLogBtn}>
-              <Text style={styles.foodLogText}>📅 Food Log</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-              <Text style={styles.logoutText}>Sign Out</Text>
+            <TouchableOpacity
+              onPress={() => setMenuOpen((o) => !o)}
+              style={styles.menuBtn}
+              accessibilityLabel="Menu"
+            >
+              <Text style={styles.menuIcon}>☰</Text>
             </TouchableOpacity>
           </View>
+          {profile && <Text style={styles.greeting}>Hi {profile.name} 👋</Text>}
         </View>
+
+                {menuOpen && (
+          <View style={styles.menuBar}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); setScreen('foodLog'); }}
+            >
+              <Text style={styles.menuItemText}>📅 Food Log</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); setScreen('account'); }}
+            >
+              <Text style={styles.menuItemText}>👤 Account</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { setMenuOpen(false); setScreen('sources'); }}
+            >
+              <Text style={styles.menuItemText}>📚 Sources & References</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemLast]}
+              onPress={() => { setMenuOpen(false); handleLogout(); }}
+            >
+              <Text style={styles.menuItemText}>🚪 Sign Out</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TouchableOpacity style={styles.jumpButton} onPress={scrollToInfographic}>
           <Text style={styles.jumpButtonText}>↓ Jump to Nutrients</Text>
@@ -293,11 +364,14 @@ export default function App() {
             infographicY.current = e.nativeEvent.layout.y;
           }}
         >
-          <NutrientProgress
+                    <NutrientProgress
             totals={totals}
             goals={goals}
             comparators={comparators}
             onEditGoals={() => setGoalsModalOpen(true)}
+            hiddenNutrients={profile?.hiddenNutrients ?? []}
+            onToggleHidden={toggleHiddenNutrient}
+            onShowSources={() => setScreen('sources')}
           />
 
           <TouchableOpacity style={styles.topButton} onPress={scrollToTop}>
@@ -328,7 +402,7 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 16, color: '#666' },
   scroll: { padding: 16 },
 
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 8, marginBottom: 16 },
+  topBar: { marginTop: 8, marginBottom: 16 }, 
   appTitle: { fontSize: 28, fontWeight: 'bold', color: '#1a1a1a' },
   wordmark: { width: 150, height: 40 },
   greeting: { fontSize: 15, color: '#666', marginTop: 2 },
@@ -372,4 +446,21 @@ const styles = StyleSheet.create({
     borderColor: '#c7d2fe',
   },
   topButtonText: { color: '#4338ca', fontSize: 15, fontWeight: '600' },
+
+    brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  menuBtn: { padding: 8, borderRadius: 8, backgroundColor: '#f5f5f5', borderWidth: 1, borderColor: '#ddd' },
+  menuIcon: { fontSize: 22, color: '#333', lineHeight: 24 },
+  menuBar: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  menuItem: { paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  menuItemLast: { borderBottomWidth: 0 },
+  menuItemText: { fontSize: 16, color: '#333', fontWeight: '600' },
+
+  
 });

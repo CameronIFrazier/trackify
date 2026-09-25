@@ -28,6 +28,7 @@ export type UserProfile = {
   activity: ActivityLevel;    // defaults to 'moderate' if skipped
   timezone?: string;          // IANA tz, e.g. 'America/Los_Angeles'
   lastLoggedDate?: string;    // last completed day logged to the Food Log ('YYYY-MM-DD')
+  hiddenNutrients?: string[]; // nutrient keys hidden from the Today's Nutrients display
 };
 
 // Activity multipliers applied to BMR (standard TDEE factors).
