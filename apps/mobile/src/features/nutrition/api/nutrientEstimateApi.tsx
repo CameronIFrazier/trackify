@@ -1,8 +1,9 @@
 // Calls the Lambda "estimate" route, which uses Amazon Bedrock (Claude) to
 // estimate a food's nutrient values from its name + any values already entered.
+// This one is a single-shot call (no cold-start retry) by design.
+import { API_BASE } from '@/api/client';
 
-const BASE_URL = 'https://gmdcz4ashy6yfypp3l7wagi2ee0ihpor.lambda-url.us-west-2.on.aws';
-const ESTIMATE_URL = `${BASE_URL}/estimate`;
+const ESTIMATE_URL = `${API_BASE}/estimate`;
 
 export type NutrientSchemaItem = { key: string; label: string; unit: string };
 

@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import TrackerTable from './TrackerTable';
-import { NutrientValues, ALL_NUTRIENT_KEYS } from './nutrients';
-import { loadFoods } from './foodApi';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
+import TrackerTable from '@/features/nutrition/components/TrackerTable';
+import { NutrientValues, ALL_NUTRIENT_KEYS } from '@/features/nutrition/lib/nutrients';
+import { loadFoods } from '@/features/nutrition/api/foodApi';
 import {
   FoodTable,
   loadTables,
   createTable,
   renameTable,
   deleteTable,
-} from './tablesApi';
+} from '@/features/nutrition/api/tablesApi';
 
 type TablesManagerProps = {
   userId: string | null;
@@ -124,20 +124,31 @@ export default function TablesManager({
     setTables((prev) => prev.map((t, i) => (i === activeIdx ? { ...t, name } : t)));
   };
 
-  const handleDelete = async () => {
+  // Actually remove the active table (after the user confirms).
+  const performDelete = async () => {
     if (!userId || !active) return;
-    if (tables.length <= 1) return; // never delete the last table
-    const ok =
-      Platform.OS === 'web'
-        ? window.confirm(`Delete "${active.name}" and all its food? This can't be undone.`)
-        : true; // (native confirm could use Alert; kept simple)
-    if (!ok) return;
     await deleteTable(userId, active.id);
     delete perTableTotals.current[active.id];
     const nextTables = tables.filter((_, i) => i !== activeIdx);
     setTables(nextTables);
     setActiveIdx((i) => Math.max(0, Math.min(i, nextTables.length - 1)));
     emitCombined();
+  };
+
+  // Confirm first, on both platforms (web uses window.confirm, native an Alert).
+  const handleDelete = () => {
+    if (!userId || !active) return;
+    if (tables.length <= 1) return; // never delete the last table
+    const message = `Delete "${active.name}" and all its food? This can't be undone.`;
+    if (Platform.OS === 'web') {
+      // eslint-disable-next-line no-alert
+      if (window.confirm(message)) performDelete();
+    } else {
+      Alert.alert('Delete Table', message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: performDelete },
+      ]);
+    }
   };
 
   if (!ready || !active) {

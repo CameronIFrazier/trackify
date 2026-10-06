@@ -6,14 +6,14 @@ import {
   nutrientMeta,
   NutrientValues,
   NUTRIENT_GROUPS,
-} from './nutrients';
+} from '@/features/nutrition/lib/nutrients';
 import {
   Comparator,
   defaultComparator,
   goalColor,
   goalFillFraction,
   COMPARATOR_SYMBOLS,
-} from './goalComparators';
+} from '@/features/nutrition/lib/goalComparators';
 
 type NutrientProgressProps = {
   totals: NutrientValues;                       // today's accumulated nutrients

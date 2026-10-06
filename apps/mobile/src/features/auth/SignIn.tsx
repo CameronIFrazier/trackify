@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { loginUser } from './auth';
+import { loginUser } from '@/features/auth/auth';
 
 type SignInProps = {
   onSignedIn: () => void;

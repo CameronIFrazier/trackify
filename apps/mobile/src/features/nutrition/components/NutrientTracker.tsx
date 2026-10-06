@@ -1,20 +1,20 @@
 import { useState, useMemo, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { NUTRIENT_GROUPS } from './nutrients';
+import { NUTRIENT_GROUPS } from '@/features/nutrition/lib/nutrients';
 import {
   Comparator,
   COMPARATOR_ORDER,
   COMPARATOR_LABELS,
   COMPARATOR_SYMBOLS,
   goalMet,
-} from './goalComparators';
-import { LoadedDay } from './dailyLogApi';
+} from '@/features/nutrition/lib/goalComparators';
+import { LoadedDay } from '@/features/nutrition/api/dailyLogApi';
 import {
   SavedStatement,
   loadStatements,
   saveStatement,
   deleteStatement,
-} from './statementsApi';
+} from '@/features/nutrition/api/statementsApi';
 
 type NutrientTrackerProps = {
   userId: string | null;

@@ -6,9 +6,9 @@
 // we logged: a real snapshot for the most recent active day, and "not_logged"
 // gap markers for any days the user skipped entirely.
 
-import { Comparator } from './goalComparators';
-import { NutrientValues } from './nutrients';
-import { saveDailyLog } from './dailyLogApi';
+import { Comparator } from '@/features/nutrition/lib/goalComparators';
+import { NutrientValues } from '@/features/nutrition/lib/nutrients';
+import { saveDailyLog } from '@/features/nutrition/api/dailyLogApi';
 
 export type DayStatus = 'logged' | 'not_logged';
 

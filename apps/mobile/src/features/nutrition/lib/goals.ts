@@ -2,8 +2,8 @@
 // Uses the Mifflin-St Jeor equation for calories and RDA tables for the rest —
 // established nutrition science, no AI needed.
 
-import { DAILY_VALUES, ALL_NUTRIENT_KEYS } from './nutrients';
-import { Comparator, defaultComparator } from './goalComparators';
+import { DAILY_VALUES, ALL_NUTRIENT_KEYS } from '@/features/nutrition/lib/nutrients';
+import { Comparator, defaultComparator } from '@/features/nutrition/lib/goalComparators';
 
 // Detect the device's IANA timezone (e.g. "America/Los_Angeles").
 // Free, synchronous, local read — no network. Falls back to UTC.

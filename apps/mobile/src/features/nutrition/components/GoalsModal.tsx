@@ -8,14 +8,14 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { NUTRIENT_GROUPS } from './nutrients';
+import { NUTRIENT_GROUPS } from '@/features/nutrition/lib/nutrients';
 import {
   Comparator,
   COMPARATOR_ORDER,
   COMPARATOR_LABELS,
   COMPARATOR_SYMBOLS,
   defaultComparator,
-} from './goalComparators';
+} from '@/features/nutrition/lib/goalComparators';
 
 type GoalsModalProps = {
   visible: boolean;

@@ -1,7 +1,8 @@
-import './amplifyConfig'; // must run first to configure Amplify
+import '@/features/auth/amplifyConfig'; // must run first to configure Amplify
 import { useState, useRef, useEffect } from 'react';
-import AccountScreen from './AccountScreen';
-import Sources from './Sources';
+import AccountScreen from '@/features/account/AccountScreen';
+import Sources from '@/features/nutrition/screens/Sources';
+import Menu from '@/components/Menu';
 
 import {
   SafeAreaView,
@@ -12,21 +13,21 @@ import {
   Image,
   StyleSheet,
 } from 'react-native';
-import TablesManager from './TablesManager';
-import NutrientProgress from './NutrientProgress';
-import Onboarding from './Onboarding';
-import LoadingScreen from './LoadingScreen';
-import GoalsModal from './GoalsModal';
-import FoodLog from './FoodLog';
-import SignIn from './SignIn';
-import VerifyEmail from './VerifyEmail';
-import { NutrientValues } from './nutrients';
-import { UserProfile, computeGoals, computeComparators, detectTimezone } from './goals';
-import { Comparator } from './goalComparators';
-import { loadGoals, saveGoals } from './nutrientGoalsApi';
-import { getSignedInUser, loginUser, logoutUser, getUserId } from './auth';
-import { loadProfile, saveProfile } from './profileApi';
-import { runDailySnapshot } from './dailyLog';
+import TablesManager from '@/features/nutrition/components/TablesManager';
+import NutrientProgress from '@/features/nutrition/components/NutrientProgress';
+import Onboarding from '@/features/auth/Onboarding';
+import LoadingScreen from '@/components/LoadingScreen';
+import GoalsModal from '@/features/nutrition/components/GoalsModal';
+import FoodLog from '@/features/nutrition/screens/FoodLog';
+import SignIn from '@/features/auth/SignIn';
+import VerifyEmail from '@/features/auth/VerifyEmail';
+import { NutrientValues } from '@/features/nutrition/lib/nutrients';
+import { UserProfile, computeGoals, computeComparators, detectTimezone } from '@/features/nutrition/lib/goals';
+import { Comparator } from '@/features/nutrition/lib/goalComparators';
+import { loadGoals, saveGoals } from '@/features/nutrition/api/nutrientGoalsApi';
+import { getSignedInUser, loginUser, logoutUser, getUserId } from '@/features/auth/auth';
+import { loadProfile, saveProfile } from '@/features/account/profileApi';
+import { runDailySnapshot } from '@/features/nutrition/lib/dailyLog';
 
 // ---- DEV MODE ----
 // Set to true to skip auth entirely and boot straight into the app with a
@@ -69,7 +70,9 @@ export default function App() {
   // Guards so the daily snapshot runs at most once per app entry.
   const snapshotRanRef = useRef(false);
   const [goalsModalOpen, setGoalsModalOpen] = useState(false);
-   const [menuOpen, setMenuOpen] = useState(false);   // <-- add this
+  // Which screen to return to when the Sources page is closed — it's reachable
+  // both from Home (the nutrients link) and from the Account page.
+  const [sourcesFrom, setSourcesFrom] = useState<Screen>('app');
   const [userId, setUserId] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('Loading…');
 
@@ -289,12 +292,14 @@ export default function App() {
         userId={userId}
         onBack={() => setScreen('app')}
         onAccountDeleted={handleAccountDeleted}
+        onShowSources={() => { setSourcesFrom('account'); setScreen('sources'); }}
+        onLogout={handleLogout}
       />
     );
   }
 
     if (screen === 'sources') {
-    return <Sources onBack={() => setScreen('app')} />;
+    return <Sources onBack={() => setScreen(sourcesFrom)} />;
   }
 
   // Main app (screen === 'app')
@@ -308,45 +313,17 @@ export default function App() {
               style={styles.wordmark}
               resizeMode="contain"
             />
-            <TouchableOpacity
-              onPress={() => setMenuOpen((o) => !o)}
-              style={styles.menuBtn}
-              accessibilityLabel="Menu"
-            >
-              <Text style={styles.menuIcon}>☰</Text>
-            </TouchableOpacity>
+            <Menu
+              active="home"
+              onSelect={(key) => {
+                if (key === 'foodLog') setScreen('foodLog');
+                else if (key === 'account') setScreen('account');
+                else setScreen('app'); // 'home'
+              }}
+            />
           </View>
           {profile && <Text style={styles.greeting}>Hi {profile.name} 👋</Text>}
         </View>
-
-                {menuOpen && (
-          <View style={styles.menuBar}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => { setMenuOpen(false); setScreen('foodLog'); }}
-            >
-              <Text style={styles.menuItemText}>📅 Food Log</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => { setMenuOpen(false); setScreen('account'); }}
-            >
-              <Text style={styles.menuItemText}>👤 Account</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => { setMenuOpen(false); setScreen('sources'); }}
-            >
-              <Text style={styles.menuItemText}>📚 Sources & References</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.menuItem, styles.menuItemLast]}
-              onPress={() => { setMenuOpen(false); handleLogout(); }}
-            >
-              <Text style={styles.menuItemText}>🚪 Sign Out</Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         <TouchableOpacity style={styles.jumpButton} onPress={scrollToInfographic}>
           <Text style={styles.jumpButtonText}>↓ Jump to Nutrients</Text>
@@ -371,7 +348,7 @@ export default function App() {
             onEditGoals={() => setGoalsModalOpen(true)}
             hiddenNutrients={profile?.hiddenNutrients ?? []}
             onToggleHidden={toggleHiddenNutrient}
-            onShowSources={() => setScreen('sources')}
+            onShowSources={() => { setSourcesFrom('app'); setScreen('sources'); }}
           />
 
           <TouchableOpacity style={styles.topButton} onPress={scrollToTop}>
@@ -447,20 +424,7 @@ const styles = StyleSheet.create({
   },
   topButtonText: { color: '#4338ca', fontSize: 15, fontWeight: '600' },
 
-    brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
-  menuBtn: { padding: 8, borderRadius: 8, backgroundColor: '#f5f5f5', borderWidth: 1, borderColor: '#ddd' },
-  menuIcon: { fontSize: 22, color: '#333', lineHeight: 24 },
-  menuBar: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#eee',
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
-  menuItem: { paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  menuItemLast: { borderBottomWidth: 0 },
-  menuItemText: { fontSize: 16, color: '#333', fontWeight: '600' },
+  brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
 
   
 });

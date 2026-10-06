@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
-import { confirmUser, resendCode } from './auth';
+import { confirmUser, resendCode } from '@/features/auth/auth';
 
 type VerifyEmailProps = {
   email: string;

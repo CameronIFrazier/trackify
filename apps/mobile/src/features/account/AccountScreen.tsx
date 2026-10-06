@@ -3,17 +3,20 @@ import {
   SafeAreaView, View, Text, TouchableOpacity, ScrollView, Alert, StyleSheet,
 } from 'react-native';
 import { deleteUser } from 'aws-amplify/auth';
-import { UserProfile } from './goals';
-import { deleteAccountData } from './accountApi';
+import { Ionicons } from '@expo/vector-icons';
+import { UserProfile } from '@/features/nutrition/lib/goals';
+import { deleteAccountData } from '@/features/account/accountApi';
 import { Platform } from 'react-native';
 type Props = {
   profile: UserProfile | null;
   userId: string | null;
   onBack: () => void;
   onAccountDeleted: () => void; // parent resets to sign-in
+  onShowSources: () => void;    // open the Sources & References page
+  onLogout: () => void;         // sign out and return to sign-in
 };
 
-export default function AccountScreen({ profile, userId, onBack, onAccountDeleted }: Props) {
+export default function AccountScreen({ profile, userId, onBack, onAccountDeleted, onShowSources, onLogout }: Props) {
   const [deleting, setDeleting] = useState(false);
 
  const confirmDelete = () => {
@@ -78,6 +81,19 @@ export default function AccountScreen({ profile, userId, onBack, onAccountDelete
           </View>
         )}
 
+        <View style={styles.listCard}>
+          <TouchableOpacity style={styles.row} onPress={onShowSources}>
+            <Ionicons name="book-outline" size={20} color="#4338ca" />
+            <Text style={styles.rowText}>Sources & References</Text>
+            <Ionicons name="chevron-forward" size={18} color="#bbb" />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.row, styles.rowLast]} onPress={onLogout}>
+            <Ionicons name="log-out-outline" size={20} color="#555" />
+            <Text style={styles.rowText}>Sign Out</Text>
+            <Ionicons name="chevron-forward" size={18} color="#bbb" />
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.dangerCard}>
           <Text style={styles.dangerTitle}>Delete Account</Text>
           <Text style={styles.dangerBody}>
@@ -108,6 +124,10 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#eee' },
   label: { fontSize: 13, color: '#888', fontWeight: '600' },
   value: { fontSize: 16, color: '#1a1a1a', marginTop: 2 },
+  listCard: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: '#eee', overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  rowLast: { borderBottomWidth: 0 },
+  rowText: { flex: 1, fontSize: 16, color: '#333', fontWeight: '600', marginLeft: 12 },
   dangerCard: { backgroundColor: '#fef2f2', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#fecaca' },
   dangerTitle: { fontSize: 16, fontWeight: 'bold', color: '#b91c1c', marginBottom: 6 },
   dangerBody: { fontSize: 14, color: '#7f1d1d', marginBottom: 16, lineHeight: 20 },

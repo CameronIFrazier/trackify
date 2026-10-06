@@ -8,8 +8,8 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { UserProfile, Sex, ActivityLevel, detectTimezone } from './goals';
-import { registerUser } from './auth';
+import { UserProfile, Sex, ActivityLevel, detectTimezone } from '@/features/nutrition/lib/goals';
+import { registerUser } from '@/features/auth/auth';
 
 type OnboardingProps = {
   // Called after Cognito signup succeeds; parent then shows email verification.

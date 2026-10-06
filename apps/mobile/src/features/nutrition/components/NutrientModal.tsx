@@ -8,8 +8,8 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { NUTRIENT_GROUPS, NutrientValues } from './nutrients';
-import { estimateNutrients } from './nutrientEstimateApi';
+import { NUTRIENT_GROUPS, NutrientValues } from '@/features/nutrition/lib/nutrients';
+import { estimateNutrients } from '@/features/nutrition/api/nutrientEstimateApi';
 
 type NutrientModalProps = {
   visible: boolean;
@@ -107,6 +107,22 @@ export default function NutrientModal({
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll}>
+          {/* Assume Unfilled — placed at the top for quick access */}
+          <TouchableOpacity
+            style={[styles.assumeButton, estimating && { opacity: 0.6 }]}
+            onPress={assumeUnfilled}
+            disabled={estimating}
+          >
+            <Text style={styles.assumeText}>
+              {estimating ? 'Estimating…' : '✨ Assume Unfilled'}
+            </Text>
+          </TouchableOpacity>
+          {estimateError ? <Text style={styles.assumeError}>{estimateError}</Text> : null}
+          <Text style={styles.assumeHint}>
+            Uses AI to estimate empty fields from the food name and the values you've
+            entered. Estimated fields appear highlighted — edit any to override.
+          </Text>
+
           {NUTRIENT_GROUPS.map((group) => (
             <View key={group.group} style={styles.group}>
               <Text style={styles.groupTitle}>{group.group}</Text>
@@ -132,19 +148,7 @@ export default function NutrientModal({
             </View>
           ))}
 
-          {/* Assume unfilled button */}
-          <TouchableOpacity
-            style={[styles.assumeButton, estimating && { opacity: 0.6 }]}
-            onPress={assumeUnfilled}
-            disabled={estimating}
-          >
-            <Text style={styles.assumeText}>
-              {estimating ? 'Estimating…' : '✨ Assume Unfilled'}
-            </Text>
-          </TouchableOpacity>
-          {estimateError ? <Text style={styles.assumeError}>{estimateError}</Text> : null}
-
-          {/* Empty all fields button */}
+          {/* Empty all fields — reset, kept at the bottom */}
           <TouchableOpacity
             style={styles.emptyButton}
             onPress={emptyAllFields}
@@ -152,11 +156,6 @@ export default function NutrientModal({
           >
             <Text style={styles.emptyText}>Empty All Fields</Text>
           </TouchableOpacity>
-
-          <Text style={styles.assumeHint}>
-            Uses AI to estimate empty fields from the food name and the values you've
-            entered. Estimated fields appear highlighted — edit any to override.
-          </Text>
         </ScrollView>
       </View>
     </Modal>
@@ -232,5 +231,5 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   emptyText: { color: '#c62828', fontSize: 15, fontWeight: '600' },
-  assumeHint: { color: '#888', fontSize: 12, marginTop: 8, textAlign: 'center', lineHeight: 17 },
+  assumeHint: { color: '#888', fontSize: 12, marginTop: 8, marginBottom: 20, textAlign: 'center', lineHeight: 17 },
 });

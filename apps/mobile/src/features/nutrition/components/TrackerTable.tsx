@@ -8,9 +8,26 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import NutrientModal from './NutrientModal';
-import { NutrientValues, ALL_NUTRIENT_KEYS } from './nutrients';
-import { loadFoods, saveFoods } from './foodApi';
+import NutrientModal from '@/features/nutrition/components/NutrientModal';
+import { NutrientValues, ALL_NUTRIENT_KEYS, NUTRIENT_GROUPS } from '@/features/nutrition/lib/nutrients';
+import { loadFoods, saveFoods } from '@/features/nutrition/api/foodApi';
+
+// Sort key is 'manual' (saved order), 'name', or any nutrient key.
+type SortKey = 'manual' | 'name' | string;
+type SortDir = 'asc' | 'desc';
+
+// key -> display label, for the sort button + nutrient picker.
+const NUTRIENT_LABEL: Record<string, string> = {};
+NUTRIENT_GROUPS.forEach((g) => g.items.forEach((i) => { NUTRIENT_LABEL[i.key] = i.label; }));
+
+// Quick-pick presets shown at the top of the Sort menu.
+const SORT_PRESETS: { key: SortKey; label: string }[] = [
+  { key: 'manual', label: 'Manual (your order)' },
+  { key: 'name', label: 'Name (A–Z)' },
+  { key: 'calories', label: 'Calories' },
+  { key: 'protein', label: 'Protein' },
+  { key: 'totalSugars', label: 'Sugar' },
+];
 
 // One row = a food with a name, a checked flag, a serving-size note,
 // a quantity multiplier, and a full nutrient map.
@@ -70,12 +87,63 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
   const [helpOpen, setHelpOpen] = useState(false);
   const [page, setPage] = useState(0); // current page (0-based) for row pagination
 
+  // Search + sort are display-only: they never change the saved row order.
+  const [search, setSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('manual');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [nutrientPickerOpen, setNutrientPickerOpen] = useState(false);
+  // Which row's name is being edited inline (null = none).
+  const [editingNameId, setEditingNameId] = useState<number | null>(null);
+
   const PAGE_SIZE = 10;
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  // Clamp the page if rows shrink (e.g. deletions drop a page).
+
+  // Derived view: filter by search, then sort. `rows` stays the canonical order.
+  const displayRows = (() => {
+    let out = rows;
+    const q = search.trim().toLowerCase();
+    if (q) out = out.filter((r) => r.name.toLowerCase().includes(q));
+    if (sortKey !== 'manual') {
+      out = [...out].sort((a, b) => {
+        let cmp: number;
+        if (sortKey === 'name') {
+          cmp = a.name.localeCompare(b.name);
+        } else {
+          cmp = (a.nutrients[sortKey] ?? 0) - (b.nutrients[sortKey] ?? 0);
+        }
+        return sortDir === 'asc' ? cmp : -cmp;
+      });
+    }
+    return out;
+  })();
+
+  const pageCount = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE));
+  // Clamp the page if the view shrinks (deletion, search filter, etc.).
   const safePage = Math.min(page, pageCount - 1);
-  const pagedRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
-  const showPager = rows.length > PAGE_SIZE;
+  const pagedRows = displayRows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const showPager = displayRows.length > PAGE_SIZE;
+
+  // Reset to the first page whenever the search text or sort changes.
+  useEffect(() => { setPage(0); }, [search, sortKey, sortDir]);
+
+  // Choose a sort field; re-picking the active field flips direction.
+  const selectSort = (key: SortKey) => {
+    if (key === sortKey && key !== 'manual') {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'name' ? 'asc' : 'desc'); // name A–Z, nutrients high→low
+    }
+    setSortMenuOpen(false);
+    setNutrientPickerOpen(false);
+  };
+
+  // Short label + arrow for the Sort button.
+  const sortFieldLabel =
+    sortKey === 'manual' ? 'Sort'
+    : sortKey === 'name' ? 'Name'
+    : (SHORT[sortKey] ?? NUTRIENT_LABEL[sortKey] ?? sortKey);
+  const sortArrow = sortKey === 'manual' ? '' : sortDir === 'desc' ? ' ↓' : ' ↑';
 
   // Keep the title in sync if the active table changes under us.
   useEffect(() => {
@@ -204,6 +272,17 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, quantity: text } : r)));
   };
 
+  // Edit a food's name inline.
+  const setRowName = (id: number, text: string) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, name: text } : r)));
+  };
+
+  // Finish inline name editing: trim, and never leave a blank name.
+  const finishEditName = (id: number) => {
+    setEditingNameId(null);
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, name: r.name.trim() || 'Untitled' } : r)));
+  };
+
   // Save from the modal (full nutrient set). Preserves serving/quantity.
   const saveNutrients = (id: number, values: NutrientValues) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, nutrients: values } : r)));
@@ -313,6 +392,34 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
         <Text style={styles.helpBtnText}>ⓘ  What are these fields?</Text>
       </TouchableOpacity>
 
+      {/* Search + Sort controls */}
+      <View style={styles.controls}>
+        <View style={styles.searchWrap}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search items…"
+            placeholderTextColor="#999"
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} style={styles.searchClear}>
+              <Text style={styles.searchClearText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity
+          style={[styles.sortBtn, sortKey !== 'manual' && styles.sortBtnActive]}
+          onPress={() => setSortMenuOpen(true)}
+        >
+          <Text style={[styles.sortBtnText, sortKey !== 'manual' && styles.sortBtnTextActive]}>
+            {sortFieldLabel}{sortArrow} ▾
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Header */}
       <View style={styles.tableHeader}>
         <Text style={[styles.cell, styles.checkCol]}>✓</Text>
@@ -329,8 +436,10 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
       </View>
 
       {/* Rows */}
-      {rows.length === 0 ? (
-        <Text style={styles.emptyText}>No items yet — add one below.</Text>
+      {displayRows.length === 0 ? (
+        <Text style={styles.emptyText}>
+          {rows.length === 0 ? 'No items yet — add one below.' : 'No items match your search.'}
+        </Text>
       ) : (
         pagedRows.map((row) => (
           <View key={row.id} style={styles.row}>
@@ -343,9 +452,22 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
               </View>
             </TouchableOpacity>
 
-            <Text style={[styles.cell, styles.nameCol]} numberOfLines={1}>
-              {row.name}
-            </Text>
+            {/* Name — tap to edit inline */}
+            {editingNameId === row.id ? (
+              <TextInput
+                style={[styles.cell, styles.nameCol, styles.nameInput]}
+                value={row.name}
+                onChangeText={(t) => setRowName(row.id, t)}
+                onBlur={() => finishEditName(row.id)}
+                onSubmitEditing={() => finishEditName(row.id)}
+                autoFocus
+                returnKeyType="done"
+              />
+            ) : (
+              <TouchableOpacity style={styles.nameCol} onPress={() => setEditingNameId(row.id)}>
+                <Text style={styles.cell} numberOfLines={1}>{row.name}</Text>
+              </TouchableOpacity>
+            )}
 
             {/* Serving size (free text) */}
             <TextInput
@@ -413,6 +535,78 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
           onSave={(values) => saveNutrients(modalRow.id, values)}
         />
       )}
+
+      {/* Sort menu */}
+      <Modal
+        visible={sortMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSortMenuOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setSortMenuOpen(false)}
+        >
+          <View style={styles.menuCard}>
+            <Text style={styles.menuTitle}>Sort by</Text>
+            {SORT_PRESETS.map((p) => {
+              const isActive = p.key === sortKey;
+              return (
+                <TouchableOpacity key={p.key} style={styles.menuRow} onPress={() => selectSort(p.key)}>
+                  <Text style={[styles.menuRowText, isActive && styles.menuRowActive]}>{p.label}</Text>
+                  {isActive && p.key !== 'manual' && (
+                    <Text style={styles.menuRowArrow}>{sortDir === 'desc' ? '↓' : '↑'}</Text>
+                  )}
+                  {isActive && <Text style={styles.menuCheck}>✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              style={[styles.menuRow, styles.menuRowLast]}
+              onPress={() => { setSortMenuOpen(false); setNutrientPickerOpen(true); }}
+            >
+              <Text style={styles.menuRowText}>Other nutrient…</Text>
+              <Text style={styles.menuRowArrow}>›</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Nutrient picker — sort by any of the 35 nutrients */}
+      <Modal
+        visible={nutrientPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNutrientPickerOpen(false)}
+      >
+        <View style={styles.menuOverlay}>
+          <View style={styles.pickerCard}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.menuTitle}>Sort by nutrient</Text>
+              <TouchableOpacity onPress={() => setNutrientPickerOpen(false)}>
+                <Text style={styles.pickerClose}>Done</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {NUTRIENT_GROUPS.map((group) => (
+                <View key={group.group} style={styles.pickerGroup}>
+                  <Text style={styles.pickerGroupTitle}>{group.group}</Text>
+                  {group.items.map((item) => {
+                    const isActive = item.key === sortKey;
+                    return (
+                      <TouchableOpacity key={item.key} style={styles.menuRow} onPress={() => selectSort(item.key)}>
+                        <Text style={[styles.menuRowText, isActive && styles.menuRowActive]}>{item.label}</Text>
+                        {isActive && <Text style={styles.menuCheck}>✓</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* "What are these fields?" help modal */}
       <Modal
@@ -490,6 +684,36 @@ const styles = StyleSheet.create({
 
   helpBtn: { alignSelf: 'flex-start', paddingVertical: 6, marginBottom: 4 },
   helpBtnText: { color: '#1565c0', fontSize: 13, fontWeight: '600' },
+
+  // Search + sort controls
+  controls: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  searchWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 8, backgroundColor: '#fafafa', minWidth: 0 },
+  searchIcon: { fontSize: 13, marginRight: 4, color: '#999' },
+  searchInput: { flex: 1, paddingVertical: 7, fontSize: 14, color: '#333', minWidth: 0 },
+  searchClear: { paddingHorizontal: 4, paddingVertical: 2 },
+  searchClearText: { color: '#999', fontSize: 13 },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fafafa' },
+  sortBtnActive: { borderColor: '#2e7d32', backgroundColor: '#f1f8f1' },
+  sortBtnText: { fontSize: 13, color: '#555', fontWeight: '600' },
+  sortBtnTextActive: { color: '#2e7d32' },
+
+  nameInput: { borderWidth: 1, borderColor: '#2e7d32', borderRadius: 6, paddingVertical: 3, paddingHorizontal: 6, marginRight: 2, color: '#333' },
+
+  // Sort menu + nutrient picker
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  menuCard: { backgroundColor: '#fff', borderRadius: 14, paddingVertical: 8, width: '100%', maxWidth: 360 },
+  menuTitle: { fontSize: 13, fontWeight: 'bold', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 16, paddingVertical: 8 },
+  menuRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  menuRowLast: {},
+  menuRowText: { flex: 1, fontSize: 15, color: '#333' },
+  menuRowActive: { color: '#2e7d32', fontWeight: '700' },
+  menuRowArrow: { fontSize: 15, color: '#2e7d32', fontWeight: 'bold', marginHorizontal: 8 },
+  menuCheck: { fontSize: 15, color: '#2e7d32', fontWeight: 'bold' },
+  pickerCard: { backgroundColor: '#fff', borderRadius: 14, width: '100%', maxWidth: 400, maxHeight: '80%', overflow: 'hidden' },
+  pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  pickerClose: { color: '#2e7d32', fontSize: 15, fontWeight: 'bold' },
+  pickerGroup: { paddingBottom: 6 },
+  pickerGroupTitle: { fontSize: 13, fontWeight: 'bold', color: '#2e7d32', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 2 },
 
   tableHeader: {
     flexDirection: 'row',

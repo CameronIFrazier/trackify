@@ -9,10 +9,10 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import NutrientProgress from './NutrientProgress';
-import NutrientTracker from './NutrientTracker';
-import { loadDailyLog, LoadedDay } from './dailyLogApi';
-import { MAIN_GOAL_KEYS, goalMet, Comparator } from './goalComparators';
+import NutrientProgress from '@/features/nutrition/components/NutrientProgress';
+import NutrientTracker from '@/features/nutrition/components/NutrientTracker';
+import { loadDailyLog, LoadedDay } from '@/features/nutrition/api/dailyLogApi';
+import { MAIN_GOAL_KEYS, goalMet, Comparator } from '@/features/nutrition/lib/goalComparators';
 
 type FoodLogProps = {
   userId: string | null;
