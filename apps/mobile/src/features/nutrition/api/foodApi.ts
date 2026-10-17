@@ -11,6 +11,7 @@ export type FoodRow = {
   servingSize: string;   // free text (e.g. "1 cup", "100g"); display only
   quantity: number;      // servings multiplier used when totaling nutrients
   nutrients: Record<string, number | undefined>;
+  photoKey?: string | null; // S3 object key of the food photo, if one was saved
 };
 
 // Load the user's saved food list, retrying to cover Aurora's cold-start wake.
@@ -27,6 +28,7 @@ export async function loadFoods(userId: string, tableId: string): Promise<FoodRo
         servingSize: f.servingSize ?? '',
         quantity: f.quantity === undefined || f.quantity === null ? 1 : Number(f.quantity),
         nutrients: f.nutrients ?? {},
+        photoKey: f.photoKey ?? null,
       })),
     { label: 'loadFoods' }
   );

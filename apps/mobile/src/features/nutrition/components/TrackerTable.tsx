@@ -38,6 +38,7 @@ type Row = {
   servingSize: string; // free text, display only (e.g. "1 cup", "100g")
   quantity: string;    // raw text; parsed to a number for math ('' / invalid = 1)
   nutrients: NutrientValues;
+  photoKey?: string | null; // S3 key of this food's photo, if one was saved
 };
 
 // The three nutrient columns shown inline on the front table.
@@ -171,6 +172,7 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
             servingSize: f.servingSize ?? '',
             quantity: String(f.quantity ?? 1),
             nutrients: f.nutrients,
+            photoKey: f.photoKey ?? null,
           }))
         );
         loadedRef.current = true; // only allow saving once we've truly loaded
@@ -199,6 +201,7 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
             servingSize: r.servingSize,
             quantity: qtyToNumber(r.quantity),
             nutrients: r.nutrients,
+            photoKey: r.photoKey ?? null,
           }))
         );
       }
@@ -231,6 +234,7 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
       servingSize: '',
       quantity: '1',
       nutrients: {},
+      photoKey: null,
     };
     setRows((prev) => {
       const next = [...prev, newRow];
@@ -283,9 +287,10 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, name: r.name.trim() || 'Untitled' } : r)));
   };
 
-  // Save from the modal (full nutrient set). Preserves serving/quantity.
-  const saveNutrients = (id: number, values: NutrientValues) => {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, nutrients: values } : r)));
+  // Save from the modal (full nutrient set + optional photo). Preserves
+  // serving/quantity.
+  const saveNutrients = (id: number, values: NutrientValues, photoKey: string | null) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, nutrients: values, photoKey } : r)));
   };
 
   // Totals for the inline columns: sum (nutrient * quantity) across checked rows.
@@ -531,8 +536,10 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
           visible={modalRowId !== null}
           foodName={modalRow.name}
           initialValues={modalRow.nutrients}
+          userId={userId}
+          initialPhotoKey={modalRow.photoKey}
           onClose={() => setModalRowId(null)}
-          onSave={(values) => saveNutrients(modalRow.id, values)}
+          onSave={(values, photoKey) => saveNutrients(modalRow.id, values, photoKey)}
         />
       )}
 

@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.cameronfrazier.trackify",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Trackify uses the camera so you can take a photo of a food to estimate its nutrients.",
+        "NSPhotoLibraryUsageDescription": "Trackify accesses your photos so you can choose a food photo to estimate its nutrients."
       }
     },
     "android": {

@@ -7,11 +7,15 @@ const ESTIMATE_URL = `${API_BASE}/estimate`;
 
 export type NutrientSchemaItem = { key: string; label: string; unit: string };
 
+// An optional food photo to improve the estimate (base64-encoded, no data: prefix).
+export type EstimateImage = { base64: string; mediaType: string };
+
 // Returns a map of nutrientKey -> estimated number, or null on failure.
 export async function estimateNutrients(
   foodName: string,
   known: Record<string, number | undefined>,
-  schema: NutrientSchemaItem[]
+  schema: NutrientSchemaItem[],
+  image?: EstimateImage
 ): Promise<Record<string, number> | null> {
   // Strip undefined/NaN from the known values before sending.
   const knownClean: Record<string, number> = {};
@@ -23,7 +27,7 @@ export async function estimateNutrients(
     const res = await fetch(ESTIMATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'estimate', foodName, known: knownClean, schema }),
+      body: JSON.stringify({ type: 'estimate', foodName, known: knownClean, schema, image }),
     });
     if (!res.ok) {
       console.log('estimateNutrients: status', res.status);
