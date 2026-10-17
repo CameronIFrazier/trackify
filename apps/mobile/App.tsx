@@ -128,10 +128,14 @@ export default function App() {
   // When we enter the app with a profile, load any saved goals from the DB
   // and merge them over the computed defaults (saved values win). Retries
   // internally to cover Aurora's cold-start wake.
+  // Load saved goals ONCE per session (not on every return to the home
+  // screen). The guard ref prevents a re-fetch when navigating back.
+  const goalsLoadedRef = useRef(false);
   useEffect(() => {
-    if (screen !== 'app' || !profile) return;
+    if (screen !== 'app' || !profile || !userId) return;
+    if (goalsLoadedRef.current) return;
+    goalsLoadedRef.current = true;
     (async () => {
-      if (!userId) return;
       const saved = await loadGoals(userId);
       // null = load failed after retries; only merge on a real result.
       if (saved) {
@@ -141,6 +145,8 @@ export default function App() {
         if (Object.keys(saved.comparators).length > 0) {
           setComparators((prev) => ({ ...prev, ...saved.comparators }));
         }
+      } else {
+        goalsLoadedRef.current = false; // allow a retry later if it failed
       }
     })();
   }, [screen, profile, userId]);
@@ -281,29 +287,13 @@ export default function App() {
     return <VerifyEmail email={pendingAuth.current.email} onVerified={handleVerified} />;
   }
 
-  if (screen === 'foodLog') {
-    return <FoodLog userId={userId} onBack={() => setScreen('app')} />;
-  }
-
-    if (screen === 'account') {
-    return (
-      <AccountScreen
-        profile={profile}
-        userId={userId}
-        onBack={() => setScreen('app')}
-        onAccountDeleted={handleAccountDeleted}
-        onShowSources={() => { setSourcesFrom('account'); setScreen('sources'); }}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-    if (screen === 'sources') {
-    return <Sources onBack={() => setScreen(sourcesFrom)} />;
-  }
-
-  // Main app (screen === 'app')
+  // ---- Post-auth screens ----
+  // The home view stays mounted for the whole session; Food Log, Account and
+  // Sources render as overlays ON TOP of it. Because the home view never
+  // unmounts, leaving it and coming back doesn't re-pull data from the
+  // database — it's instant, with no visible refresh.
   return (
+    <View style={styles.root}>
     <SafeAreaView style={styles.container}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
         <View style={styles.topBar}>
@@ -370,10 +360,37 @@ export default function App() {
         onResetToComputed={resetGoalsToComputed}
       />
     </SafeAreaView>
+
+      {/* Overlays — mount on top of the still-mounted home view */}
+      {screen === 'foodLog' && (
+        <View style={styles.overlay}>
+          <FoodLog userId={userId} onBack={() => setScreen('app')} />
+        </View>
+      )}
+      {screen === 'account' && (
+        <View style={styles.overlay}>
+          <AccountScreen
+            profile={profile}
+            userId={userId}
+            onBack={() => setScreen('app')}
+            onAccountDeleted={handleAccountDeleted}
+            onShowSources={() => { setSourcesFrom('account'); setScreen('sources'); }}
+            onLogout={handleLogout}
+          />
+        </View>
+      )}
+      {screen === 'sources' && (
+        <View style={styles.overlay}>
+          <Sources onBack={() => setScreen(sourcesFrom)} />
+        </View>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#f0f2f5' },
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#f0f2f5', zIndex: 10 },
   container: { flex: 1, backgroundColor: '#f0f2f5' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f2f5' },
   loadingText: { fontSize: 16, color: '#666' },
