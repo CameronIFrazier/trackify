@@ -9,6 +9,11 @@
   ],
   "devDependencies": {
     "@types/jest": "^30.0.0",
-    "@types/node": "^26.1.2"
+    "@types/node": "^26.1.2",
+    "babel-plugin-module-resolver": "^5.0.3"
+  },
+  "dependencies": {
+    "react-dom": "19.1.0",
+    "react-native-web": "^0.21.0"
   }
 }
