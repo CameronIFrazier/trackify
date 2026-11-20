@@ -10,6 +10,31 @@ export type NutrientSchemaItem = { key: string; label: string; unit: string };
 // An optional food photo to improve the estimate (base64-encoded, no data: prefix).
 export type EstimateImage = { base64: string; mediaType: string };
 
+// Camera flow: estimate a food's nutrients AND guess its name from a photo,
+// when the user hasn't typed a name. Returns { nutrients, name } or null.
+export async function estimateFoodFromImage(
+  image: EstimateImage,
+  schema: NutrientSchemaItem[]
+): Promise<{ nutrients: Record<string, number>; name: string } | null> {
+  try {
+    const res = await fetch(ESTIMATE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'estimate', foodName: '', known: {}, schema, image, wantName: true }),
+    });
+    if (!res.ok) {
+      console.log('estimateFoodFromImage: status', res.status);
+      return null;
+    }
+    const data = await res.json();
+    if (!data.nutrients) return null;
+    return { nutrients: data.nutrients, name: (data.name || '').toString() };
+  } catch (e) {
+    console.log('estimateFoodFromImage failed:', e);
+    return null;
+  }
+}
+
 // Returns a map of nutrientKey -> estimated number, or null on failure.
 export async function estimateNutrients(
   foodName: string,

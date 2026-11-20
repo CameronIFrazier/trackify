@@ -17,6 +17,8 @@ type TablesManagerProps = {
   clearChecksSignal?: number;                         // per-day plate clear (active table)
   clearAllChecksSignal?: number;                      // "uncheck all tables" (Stage 3 wiring)
   onLoaded?: () => void;                              // fired once the active table has loaded
+  focusTableId?: string | null;                       // switch to this table (e.g. after camera-add)
+  reloadSignal?: number;                              // bump to reload tables from the DB
 };
 
 // Sum quantity-scaled checked nutrients for one table's stored foods.
@@ -37,10 +39,15 @@ export default function TablesManager({
   clearChecksSignal,
   clearAllChecksSignal,
   onLoaded,
+  focusTableId,
+  reloadSignal,
 }: TablesManagerProps) {
   const [tables, setTables] = useState<FoodTable[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [ready, setReady] = useState(false);
+  // Bumped to force the active TrackerTable to remount + reload from the DB
+  // (e.g. after a food is added to a table from the camera flow).
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Per-table totals, keyed by tableId. The active table reports via the
   // mounted TrackerTable; the others are computed from a background load.
@@ -93,7 +100,26 @@ export default function TablesManager({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, ready, tables, activeIdx]);
+  }, [userId, ready, tables, activeIdx, reloadKey]);
+
+  // When a food is added to a table elsewhere (camera flow), reload from the DB:
+  // clear the cached per-table totals and bump reloadKey (remounts the active
+  // TrackerTable and re-runs the background load for the others).
+  const prevReload = useRef(reloadSignal);
+  useEffect(() => {
+    if (reloadSignal === undefined || prevReload.current === reloadSignal) return;
+    prevReload.current = reloadSignal;
+    perTableTotals.current = {};
+    setReloadKey((k) => k + 1);
+  }, [reloadSignal]);
+
+  // Switch to a specific table when asked (e.g. jump to the table a photo was
+  // just added to).
+  useEffect(() => {
+    if (!focusTableId) return;
+    const idx = tables.findIndex((t) => t.id === focusTableId);
+    if (idx >= 0) setActiveIdx(idx);
+  }, [focusTableId, tables]);
 
   const active = tables[activeIdx];
 
@@ -178,9 +204,10 @@ export default function TablesManager({
         </TouchableOpacity>
       </View>
 
-      {/* Active table — remounts on table change via key so it reloads cleanly */}
+      {/* Active table — remounts on table change (or reload bump) via key so it
+          reloads cleanly from the DB */}
       <TrackerTable
-        key={active.id}
+        key={`${active.id}:${reloadKey}`}
         tableId={active.id}
         initialTitle={active.name}
         userId={userId}

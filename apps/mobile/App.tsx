@@ -3,6 +3,9 @@ import { useState, useRef, useEffect } from 'react';
 import AccountScreen from '@/features/account/AccountScreen';
 import Sources from '@/features/nutrition/screens/Sources';
 import Menu from '@/components/Menu';
+import CameraAddModal from '@/features/nutrition/components/CameraAddModal';
+import BarcodeAddModal from '@/features/nutrition/components/BarcodeAddModal';
+import { Ionicons } from '@expo/vector-icons';
 
 import {
   SafeAreaView,
@@ -70,6 +73,13 @@ export default function App() {
   // Guards so the daily snapshot runs at most once per app entry.
   const snapshotRanRef = useRef(false);
   const [goalsModalOpen, setGoalsModalOpen] = useState(false);
+  // Camera "add a food from a photo" flow.
+  const [cameraOpen, setCameraOpen] = useState(false);
+  // Barcode "scan a food" flow.
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  // After the camera adds a food, tell TablesManager to focus + reload that table.
+  const [focusTableId, setFocusTableId] = useState<string | null>(null);
+  const [tablesReloadSignal, setTablesReloadSignal] = useState(0);
   // Which screen to return to when the Sources page is closed — it's reachable
   // both from Home (the nutrients link) and from the Account page.
   const [sourcesFrom, setSourcesFrom] = useState<Screen>('app');
@@ -303,14 +313,32 @@ export default function App() {
               style={styles.wordmark}
               resizeMode="contain"
             />
-            <Menu
-              active="home"
-              onSelect={(key) => {
-                if (key === 'foodLog') setScreen('foodLog');
-                else if (key === 'account') setScreen('account');
-                else setScreen('app'); // 'home'
-              }}
-            />
+            <View style={styles.navRight}>
+              <TouchableOpacity
+                style={styles.cameraBtn}
+                onPress={() => setBarcodeOpen(true)}
+                accessibilityLabel="Scan a barcode"
+                accessibilityRole="button"
+              >
+                <Ionicons name="barcode-outline" size={24} color="#333" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cameraBtn}
+                onPress={() => setCameraOpen(true)}
+                accessibilityLabel="Add a food from a photo"
+                accessibilityRole="button"
+              >
+                <Ionicons name="camera-outline" size={24} color="#333" />
+              </TouchableOpacity>
+              <Menu
+                active="home"
+                onSelect={(key) => {
+                  if (key === 'foodLog') setScreen('foodLog');
+                  else if (key === 'account') setScreen('account');
+                  else setScreen('app'); // 'home'
+                }}
+              />
+            </View>
           </View>
           {profile && <Text style={styles.greeting}>Hi {profile.name} 👋</Text>}
         </View>
@@ -324,6 +352,8 @@ export default function App() {
           onTotalsChange={handleTotalsChange}
           clearChecksSignal={clearChecksSignal}
           onLoaded={() => setFoodsLoaded(true)}
+          focusTableId={focusTableId}
+          reloadSignal={tablesReloadSignal}
         />
 
         <View
@@ -360,6 +390,28 @@ export default function App() {
         onResetToComputed={resetGoalsToComputed}
       />
     </SafeAreaView>
+
+      {/* Add-a-food-from-a-photo camera flow */}
+      <CameraAddModal
+        visible={cameraOpen}
+        userId={userId}
+        onClose={() => setCameraOpen(false)}
+        onAdded={(tableId) => {
+          setFocusTableId(tableId);
+          setTablesReloadSignal((n) => n + 1);
+        }}
+      />
+
+      {/* Scan-a-barcode flow */}
+      <BarcodeAddModal
+        visible={barcodeOpen}
+        userId={userId}
+        onClose={() => setBarcodeOpen(false)}
+        onAdded={(tableId) => {
+          setFocusTableId(tableId);
+          setTablesReloadSignal((n) => n + 1);
+        }}
+      />
 
       {/* Overlays — mount on top of the still-mounted home view */}
       {screen === 'foodLog' && (
@@ -442,6 +494,17 @@ const styles = StyleSheet.create({
   topButtonText: { color: '#4338ca', fontSize: 15, fontWeight: '600' },
 
   brandRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' },
+  navRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cameraBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   
 });

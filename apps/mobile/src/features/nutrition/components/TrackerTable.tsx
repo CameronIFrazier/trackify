@@ -429,7 +429,7 @@ export default function TrackerTable({ tableId, initialTitle, onDelete, onRename
       <View style={styles.tableHeader}>
         <Text style={[styles.cell, styles.checkCol]}>✓</Text>
         <Text style={[styles.cell, styles.nameCol, styles.headerText]}>Item</Text>
-        <Text style={[styles.cell, styles.servingCol, styles.headerText]}>Serving</Text>
+        <Text style={[styles.cell, styles.servingCol, styles.headerText]} numberOfLines={1} adjustsFontSizeToFit>Serving</Text>
         <Text style={[styles.cell, styles.qtyCol, styles.headerText]}>Qty</Text>
         {FRONT_KEYS.map((key) => (
           <Text key={key} style={[styles.cell, styles.macroCol, styles.headerText]}>
